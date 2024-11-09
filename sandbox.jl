@@ -15,7 +15,6 @@ df = copy(old_df)
 # unique(df.Date) #No missing
 
 # unique(df.Price) #missing as missing => will need to skip or avg
-# df.Price .= coalesce.(df.Price, -1)
 
 # unique(df.Distance) #missin as #N/A
 allowmissing!(df, :Distance)
@@ -26,12 +25,18 @@ for (i,n) in enumerate(df.Distance)
 end
 df.Distance .= passmissing(parse).(Float64, df.Distance)
 
-# unique(df.Landsize) #missing as missing => -1
-# df.Landsize .= coalesce.(df.Landsize, -1)
+# unique(df.Landsize) #missing as missing there is also a zero values (for units?)
+count = 0
+for (index, val) in enumerate(skipmissing(df.Landsize))
+    if val == 0 && (df.Type == "h" || df.Type == "t" || df.Type == "o res")
+        count += 1
+    end
+end
+println(count)
+#Hence the only times the landsize is zero is for units
+
 
 # unique(df.BuildingArea) #missing as missing => -1
-# df.BuildingArea .= coalesce.(df.BuildingArea, -1)
-
 
 # unique(df.YearBuilt) #missing as missing => -1
 df.YearBuilt .= coalesce.(df.YearBuilt, -1)
@@ -40,7 +45,6 @@ df.YearBuilt .= coalesce.(df.YearBuilt, -1)
 # unique(typeof.(df.Longtitude)) #missing as missing => ?
 df.Lattitude .= coalesce.(df.Lattitude, 0.0)
 df.Longtitude .= coalesce.(df.Longtitude, 0.0)
-
 
 # unique(df.Bedroom2) #missing as missing => keep as
 # unique(df.Bathroom) #missing as missing => keep as
@@ -160,18 +164,17 @@ println("Missing values & data types changed")
 #########################################################
 using SplitApplyCombine
 
-
-typeof(df.Rooms)
-typeof(df.Price)
-typeof(df.Method)
-typeof(df.Distance)
-typeof(df.Landsize)
+typeof(df.Rooms) # Int64
+typeof(df.Price) # Int64
+typeof(df.Method) #String
+typeof(df.Distance) # Float64
+typeof(df.Landsize) # Int64
 
 #Find distributions of each variable
 #skip missing data in these plots as then averages medians can be found from the plots
-#Price
-histogram(skipmissing(df.Price))
-density(skipmissing(df.Price), lw=5, norm=true)
+
+histogram(skipmissing(df.Price), normalize=:pdf)
+density!(skipmissing(df.Price), lw=5)
 
 #Rooms
 grdf = groupcount(df.Rooms)
@@ -182,18 +185,23 @@ gmdf = groupcount(df.Method)
 bar(collect(keys(gmdf)), collect(values((gmdf))))
 
 #Distance 
-histogram(skipmissing(df.Distance))
+histogram(skipmissing(df.Distance),normalize=:pdf)
 density!(skipmissing(df.Distance), lw=5, norm=true)
 
 #Landsize
-histogram(skipmissing(df.Landsize))
-density!(skipmissing(df.Landsize), lw=5, norm=true)
+data = select(df, [:Landsize, :Type])
 
-for (i,n) in enumerate(df.Landsize)
-if typeof(n) != Missing && n > (9*10^4)
-    # @show n
-end
-end
+histogram(skipmissing(data.Landsize), normalize=:pdf, xlims=[-10, 3*10^3])
+density!(skipmissing(data.Landsize), lw=5, norm = true)
+
+#Landsize without units
+data = transform(data, :Type => x -> (x != "u"), :Landsize => y -> coalesce.(y,-1))
+data[!, :Landsize_function] = convert.(Int64, data[!, :Landsize_function])
+landsizes = data.Landsize_function[data.Type_function .== true .&& data.Landsize_function .> 0 .&& data.Landsize_function .< 3000]
+
+histogram(landsizes, normalize=:pdf)
+density!(landsizes, lw=5, norm = true, xlims=[-10, 3*10^3])
+
 
 
 #########################################################
@@ -253,7 +261,7 @@ pop!(area)
 push!(unique_vec, area)
 # area_counts = zeros(length(area))
 
-data = select(df, [:Distance, :Landsize, :Rooms, :Car, :Bathroom, :BuildingArea, :Price])
+data = select(df, [:Distance, :Landsize, :Rooms, :Car, :Bathroom, :BuildingArea, :Price, :Bedroom2])
 data = coalesce.(data, -1)
 
 global col_count = 0
@@ -282,55 +290,238 @@ bar(unique_vec[5], (prices_vec[5]./prices_count[5]))
 scatter(unique_vec[2], (prices_vec[2]./prices_count[2]))
 scatter(unique_vec[6], (prices_vec[6]./prices_count[6]))
 
-# println("basic done")
-# heat_land = unique(floor.((skipmissing((unique_vec[2])))))
-# heat_build = unique(floor.((skipmissing((unique_vec[6])))))
+#
 
-# prices_mat = zeros(length(heat_land), length(heat_build))
-# price_count_mat = zeros(length(heat_land), length(heat_build))
+sum_rooms = []
+using BenchmarkTools
+for (i,n) in enumerate(price)
+    room_count = (data.Rooms[i] != -1 ? data.Bedroom2[i] : data.Rooms[i])
+    if n != -1 && room_count != -1 && data.Bathroom[i] != -1 && data.Car[i] != -1
+        rooms = room_count + data.Bathroom[i] + data.Car[i]
+        append!(sum_rooms, rooms)
+    end
+end
 
-# function getposition(land::Int64, build::Float64)
-#     land = floor(land)
-#     l_index = 0
-#     build = floor(build)
-#     b_index = 0
-#     for (index, val) in enumerate(heat_land)
-#         if land == val
-#             l_index = index
-#         end
-#     end
-#     for (index, val) in enumerate(heat_build)
-#         if build == val
-#             b_index = index
-#         end
-#     end
-#     return [l_index, b_index]
-# end
+sum_rooms_prices = zeros(length(unique(sum_rooms)))
+count_vec = zeros(length(unique(sum_rooms)))
+
+for (j, val) in enumerate(unique(sum_rooms))
+    for (i, n) in enumerate(price)
+        room_count = (data.Rooms[i] != -1 ? data.Bedroom2[i] : data.Rooms[i])
+        if (n != -1 && room_count != -1 && data.Bathroom[i] != -1 && data.Car[i] != -1) && val == room_count + data.Bathroom[i] + data.Car[i]
+            sum_rooms_prices[j] += val
+            count_vec[j] += 1
+        end
+    end
+end
+
+
+groupcount(sum_rooms)
+scatter(unique(sum_rooms), (sum_rooms_prices ./ count_vec))
+regressions(unique(sum_rooms), (sum_rooms_prices ./ count_vec))
+#
+
+
+#land, build
+heat_land = collect(skipmissing(unique_vec[2]))
+for (i, n) in enumerate(heat_land)
+    heat_land[i] = round((n + 50) / 100) * 100
+end
+
+
+heat_build = collect(skipmissing(unique_vec[6]))
+for (i, n) in enumerate(heat_build)
+    heat_build[i] = round((n + 25) / 50) * 50
+end
+
+heat_land = unique(heat_land)
+heat_build = unique(heat_build)
+
+heat_price = zeros(length(heat_land), length(heat_build))
+prices_mat = zeros(length(heat_land), length(heat_build))
+price_count_mat = 2 .* ones(length(heat_land), length(heat_build))
+
+function getposition(land::Int64, build::Float64)
+    land = round((land + 50) / 100) * 100
+    l_index = 0
+    build = round((build + 25) / 50) * 50
+    b_index = 0
+    for (index, val) in enumerate(heat_land)
+        if land == val
+            l_index = index
+        end
+    end
+    for (index, val) in enumerate(heat_build)
+        if build == val
+            b_index = index
+        end
+    end
+    return [l_index, b_index]
+end
 
 # not_neg = 0
-# for (index, pric) in enumerate(data.Price)
-#     if pric != -1 && data.Landsize[index] != -1 && data.BuildingArea[index] != -1
-#         not_neg += 1
-#         position = getposition(data.Landsize[index], data.BuildingArea[index])
-#         prices_mat[position[1], position[2]] += pric
-#         price_count_mat[position[1], position[2]] += 1
-#     end
-#     if mod(index, 1000) == 0
-#         println(".")
-#     end
+for (index, pric) in enumerate(data.Price)
+    if pric != -1 && data.Landsize[index] != -1 && data.BuildingArea[index] != -1
+        # not_neg += 1
+        position = getposition(data.Landsize[index], data.BuildingArea[index])
+        prices_mat[position[1], position[2]] += pric
+        price_count_mat[position[1], position[2]] += 1
+    end
+    if mod(index, 1000) == 0
+        println(".")
+    end
+end
+
+prices_mat
+
+heat_price = (prices_mat ./ (price_count_mat .- 1)) ./ 10^5
+
+heatmap(heat_price)
+heat_price = Int64.(round.(heat_price))
+#
+
+
+
+#land, distance
+heat_land = collect(skipmissing(unique_vec[2]))
+for (i, n) in enumerate(heat_land)
+    heat_land[i] = round((n + 50) / 100) * 100
+end
+
+heat_dis = collect(skipmissing(unique_vec[1]))
+# for (i, n) in enumerate(heat_dis)
+#     heat_dis[i] = round((n + 25) / 50) * 50
 # end
 
-# # for (l_index,land) in enumerate(heat_land)
-# #     for (b_index,build) in enumerate(heat_build)
-# #         for pric in data.Price
-# #             if data.Landsize[l_index] != land && data.BuildingArea[b_index] != build && pric != -1
-# #                 prices_mat[l_index, b_index] += pric
-# #                 price_count_mat[l_index, b_index] += 1
-# #             end
-# #         end
-# #     end
-# # end
-# prices_mat
-# heat_price = prices_mat ./ price_count_mat
+heat_land = unique(heat_land)
+heat_dis = unique(heat_dis)
 
-# heatmap(heat_price)
+heat_price = zeros(length(heat_land), length(heat_dis))
+prices_mat = zeros(length(heat_land), length(heat_dis))
+price_count_mat = 2 .* ones(length(heat_land), length(heat_dis))
+
+function getposition(land::Int64, distance::Float64)
+    land = round((land + 50) / 100) * 100
+    l_index = 0
+    # distance = round((distance + 50) / 100) * 100
+    d_index = 0
+    for (index, val) in enumerate(heat_land)
+        if land == val
+            l_index = index
+        end
+    end
+    for (index, val) in enumerate(heat_dis)
+        if distance == val
+            d_index = index
+        end
+    end
+    return [l_index, d_index]
+end
+
+# not_neg = 0
+for (index, pric) in enumerate(data.Price)
+    if pric != -1 && data.Landsize[index] != -1 && data.Distance[index] != -1
+        # not_neg += 1
+        position = getposition(data.Landsize[index], data.Distance[index])
+        prices_mat[position[1], position[2]] += pric
+        price_count_mat[position[1], position[2]] += 1
+    end
+    if mod(index, 1000) == 0
+        println(".")
+    end
+end
+
+prices_mat
+
+heat_price = (prices_mat ./ (price_count_mat .- 1)) ./ 10^5
+
+heatmap(heat_price)
+heatmap(heat_price[:, 1:4])
+#
+
+#build, distance
+heat_distance = collect(skipmissing(unique_vec[1]))
+
+heat_build = collect(skipmissing(unique_vec[6]))
+for (i, n) in enumerate(heat_build)
+    heat_build[i] = round((n + 25) / 50) * 50
+end
+
+heat_distance = unique(heat_distance)
+heat_build = unique(heat_build)
+
+heat_price = zeros(length(heat_distance), length(heat_build))
+prices_mat = zeros(length(heat_distance), length(heat_build))
+price_count_mat = 2 .* ones(length(heat_distance), length(heat_build))
+
+function getposition(distance::Float64, build::Float64)
+    d_index = 0
+    build = round((build + 25) / 50) * 50
+    b_index = 0
+    for (index, val) in enumerate(heat_distance)
+        if distance == val
+            d_index = index
+        end
+    end
+    for (index, val) in enumerate(heat_build)
+        if build == val
+            b_index = index
+        end
+    end
+    return [d_index, b_index]
+end
+
+# not_neg = 0
+for (index, pric) in enumerate(data.Price)
+    if pric != -1 && data.Distance[index] != -1 && data.BuildingArea[index] != -1
+        # not_neg += 1
+        position = getposition(data.Distance[index], data.BuildingArea[index])
+        prices_mat[position[1], position[2]] += pric
+        price_count_mat[position[1], position[2]] += 1
+    end
+    if mod(index, 1000) == 0
+        println(".")
+    end
+end
+
+heat_price = (prices_mat ./ (price_count_mat .- 1)) ./ 10^5
+
+heatmap(heat_price)
+#
+
+
+
+
+#########################################################
+#########################################################
+############# Task 3 ####################################
+#########################################################
+#########################################################
+volume_data = select(df, [:Date, :Price, :Type])
+
+equal_times(date1::Date, date2::Date) = Dates.yearmonth(date1) == Dates.yearmonth(date2)
+
+transform!(volume_data, :Date => x -> yearmonth.(x))
+
+volume_data = groupby(volume_data, :Date_function)
+
+#num of sales
+data = combine(volume_data, nrow => :count)
+bar(rownumber.(eachrow(data)), data.count)
+#
+
+#price of sales
+# passmissing(select(df, [:Date, :Price]))
+data = combine(volume_data, :Price => mean ∘ skipmissing => :Price)
+bar(rownumber.(eachrow(data)), data.Price./10^5, ylims = [0,12])
+
+#type count
+volume_data = select(df, [:Date, :Type])
+transform!(volume_data, :Date => x -> yearmonth.(x))
+volume_data = groupby(volume_data, [:Date_function, :Type])
+
+# for each year, count groups plot the se for each year
+data = combine(volume_data, nrow => :count)
+groupedbar(rownumber.(eachrow(data)), data.count, group = data.Type, ylims = [0, 2300])
+# data = combine(volume_data, nrow => :count, :Type => x -> count(x) => :Type)
+# bar(rownumber.(eachrow(data)), data.Type)
