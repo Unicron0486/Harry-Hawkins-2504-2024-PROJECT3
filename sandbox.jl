@@ -4,7 +4,6 @@ using CSV, DataFrames, HTTP, CSV, Plots, StatsPlots, StatsBase, Dates
 path = "./data/Melbourne_housing_FULL.csv"
 old_df = CSV.read(path, DataFrame)
 
-names(old_df)
 df = copy(old_df)
 # unique(df.Suburb) #No missing
 # unique(df.Address) #No missing
@@ -157,6 +156,8 @@ rename!(df, :newmeth => :Method)
 
 println("Missing values & data types changed")
 
+last(groupby(df, :Rooms))
+groupby(df, :Car)[14]
 #########################################################
 #########################################################
 ############# Task 1 ####################################
@@ -173,34 +174,65 @@ typeof(df.Landsize) # Int64
 #Find distributions of each variable
 #skip missing data in these plots as then averages medians can be found from the plots
 
-histogram(skipmissing(df.Price), normalize=:pdf)
-density!(skipmissing(df.Price), lw=5)
+histogram(skipmissing(df.Price)./10^5, normalize=:pdf,
+title = "Pdf of price",
+xlabel = "Price (x100,000)",
+ylabel = "Normalised frequency",
+label = "Normalised frequency of prices",
+foreground_color=:grey
+)
+density!(skipmissing(df.Price)./10^5, lw=5, label = "Probability Density")
 
 #Rooms
 grdf = groupcount(df.Rooms)
-bar(collect(keys(grdf)), collect(values((grdf))))
+#From observing the DataFrame the number of rooms 7,8,9,10,12,16 are so small they do not appear on the plot. they correspond to counts of 32,19,4,6,3,1 respectivly.
+bar(collect(keys(grdf)), collect(values((grdf))),
+title = "Number of bedrooms",
+xlabel = "Number of bedrooms",
+ylabel = "Count",
+legend = false,
+xticks = 0:1:15)
 
 #Method
 gmdf = groupcount(df.Method)
-bar(collect(keys(gmdf)), collect(values((gmdf))))
+#SS has count 36
+bar(collect(keys(gmdf)), collect(values((gmdf))),
+title = "Number of each building type",
+xlabel = "Building type",
+ylabel = "Count",
+legend = false)
+
+gmdf["SN"]
 
 #Distance 
-histogram(skipmissing(df.Distance),normalize=:pdf)
-density!(skipmissing(df.Distance), lw=5, norm=true)
+histogram(skipmissing(df.Distance),normalize=:pdf,
+title = "Pdf of distance from city",
+xlabel = "Distance from city (km)",
+ylabel = "Normalised frequency",
+label = "Normalised frequency of\n distance from city")
+density!(skipmissing(df.Distance), lw=5, norm=true, label="Probability density")
 
 #Landsize
 data = select(df, [:Landsize, :Type])
 
-histogram(skipmissing(data.Landsize), normalize=:pdf, xlims=[-10, 3*10^3])
-density!(skipmissing(data.Landsize), lw=5, norm = true)
+histogram(skipmissing(data.Landsize), normalize=:pdf, xlims=[-10, 3*10^3],
+title = "Pdf of landsize",
+xlabel = "Landsize (m²)",
+ylabel = "Normalised frequency",
+label = "Normalised frequency of landsize")
+density!(skipmissing(data.Landsize), lw=5, norm = true, label="Probability density")
 
 #Landsize without units
 data = transform(data, :Type => x -> (x != "u"), :Landsize => y -> coalesce.(y,-1))
 data[!, :Landsize_function] = convert.(Int64, data[!, :Landsize_function])
 landsizes = data.Landsize_function[data.Type_function .== true .&& data.Landsize_function .> 0 .&& data.Landsize_function .< 3000]
 
-histogram(landsizes, normalize=:pdf)
-density!(landsizes, lw=5, norm = true, xlims=[-10, 3*10^3])
+histogram(landsizes, normalize=:pdf,
+title = "Pdf of landsize without 'unit' property types\n and limited to 3000m²",
+xlabel = "Landsize (m²)",
+ylabel = "Normalised frequency",
+label = "Normalised frequency of Landsize")
+density!(landsizes, lw=5, norm = true, xlims=[-10, 3*10^3], label="Probability density")
 
 
 
@@ -223,8 +255,12 @@ density!(landsizes, lw=5, norm = true, xlims=[-10, 3*10^3])
 #combine distance, area, land - each are normally distributed contiuous data so ANOVa will work
 #sum of rooms
 
+# data = select(df, [:Distance, :Landsize, :Rooms, :Car, :Bathroom, :BuildingArea, :Price, :Bedroom2])
+# sort!(data)
+# data = coalesce.(data, -1)
+# disallowmissing!(data)
 
-# prices = Vector{}(zeros(length(distances)))
+#prices = Vector{}(zeros(length(distances)))
 prices_vec = Vector{Vector{Number}}(undef, 6)
 prices_count = Vector{Vector{Number}}(undef, 6)
 unique_vec = []
@@ -233,36 +269,38 @@ price = coalesce.(df.Price, -1)
 
 distances = sort(unique(df.Distance))
 pop!(distances)
-push!(unique_vec, distances)
+push!(unique_vec, disallowmissing(distances))
 
 # dis_counts = zeros(length(distances))
 
 land = sort(unique(df.Landsize))
 pop!(land)
-push!(unique_vec, land)
+push!(unique_vec, disallowmissing(land))
 # land_counts = zeros(length(land))
 
 room = sort(unique(df.Rooms))
-push!(unique_vec, room)
+push!(unique_vec, disallowmissing(room))
 # room_counts = zeros(length(room))
 
 car = sort(unique(df.Car))
 pop!(car)
-push!(unique_vec, car)
+push!(unique_vec, disallowmissing(car))
 # car_counts = zeros(length(car))
 
 bath = sort(unique(df.Bathroom))
 pop!(bath)
-push!(unique_vec, bath)
+push!(unique_vec, disallowmissing(bath))
 # bath_counts = zeros(length(bath))
 
 area = sort(unique(df.BuildingArea))
 pop!(area)
-push!(unique_vec, area)
+push!(unique_vec, disallowmissing(area))
 # area_counts = zeros(length(area))
 
 data = select(df, [:Distance, :Landsize, :Rooms, :Car, :Bathroom, :BuildingArea, :Price, :Bedroom2])
+sort!(data)
 data = coalesce.(data, -1)
+disallowmissing!(data)
 
 global col_count = 0
 for data_type in unique_vec
@@ -281,15 +319,83 @@ for data_type in unique_vec
     end
 end
 
-scatter(unique_vec[1], (prices_vec[1]./prices_count[1]))
+#price vs Distance
+data = select(df, [:Price, :Distance])
+data = groupby(data, :Distance)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+scatter(data.Distance, data.Price./10^5,
+title = "Average price for each distance",
+xlabel = "Distance (km)",
+ylabel = "Average price (x100,000)",
+legend = false)
 
-bar(unique_vec[3], (prices_vec[3]./prices_count[3]))
-bar(unique_vec[4], (prices_vec[4]./prices_count[4]))
-bar(unique_vec[5], (prices_vec[5]./prices_count[5]))
+#room
+data = select(df, [:Price, :Rooms])
+data = groupby(data, :Rooms)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+plot(data.Rooms, data.Price./10^5,
+title = "Average price according to number of bedrooms",
+xlabel = "Number of bedrooms",
+ylabel = "Average price (x100,000)")
 
-scatter(unique_vec[2], (prices_vec[2]./prices_count[2]))
-scatter(unique_vec[6], (prices_vec[6]./prices_count[6]))
+#car
+data = select(df, [:Price, :Rooms])
+data = groupby(data, :Rooms)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+bar(data.Rooms, data.Price./10^5,
+title = "Average price according to number of car parks",
+xlabel = "Number of car parks",
+ylabel = "Average price (x100,000)",
+xticks = 0:1:20)
 
+#bathroom
+data = select(df, [:Price, :Bathroom])
+data = groupby(data, :Bathroom)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+bar(data.Bathroom, data.Price./10^5,
+title = "Average price according to number of bathrooms",
+xlabel = "Number of Bathrooms",
+ylabel = "Average price (x100,000)",
+xticks = 0:1:12)
+
+#landsize
+data = select(df, [:Price, :Landsize])
+data = groupby(data, :Landsize)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+scatter(data.Landsize, data.Price./10^5,
+title = "Average price for each landsize",
+xlabel = "Landsize (m²)",
+ylabel = "Average price (x100,000)")
+
+# zoom_data = filter((x) -> x.< 3000, unique_vec[2])
+data = select(df, [:Price, :Landsize])
+data = subset(data, :Landsize => ByRow(<=(3000)); skipmissing=true)
+data = groupby(data, :Landsize)
+data = combine(data, :Price => mean ∘ skipmissing => :Price, :Landsize => x -> x .< 3000)
+scatter(data.Landsize, data.Price./10^5,
+title = "Average price for each Landsize (zoomed)",
+xlabel = "Landsize (m²)",
+ylabel = "Average price (x100,000)")
+
+#building size
+data = select(df, [:Price, :BuildingArea])
+data = groupby(data, :BuildingArea)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+scatter(data.BuildingArea, data.Price./10^5,
+title = "Average price for each building area",
+xlabel = "Building area (m²)",
+ylabel = "Average price (x100,000)")
+
+
+data = select(df, [:Price, :BuildingArea])
+data = subset(data, :BuildingArea => ByRow(<=(1000)); skipmissing=true)
+data = groupby(data, :BuildingArea)
+data = combine(data, :Price => mean ∘ skipmissing => :Price)
+scatter(data.BuildingArea, data.Price./10^5,
+title = "Average price for each building area (zoomed)",
+xlabel = "Building area (m²)",
+ylabel = "Average price (x100,000)",
+xlims = 0:3*10^3)
 #
 
 sum_rooms = []
@@ -309,7 +415,7 @@ for (j, val) in enumerate(unique(sum_rooms))
     for (i, n) in enumerate(price)
         room_count = (data.Rooms[i] != -1 ? data.Bedroom2[i] : data.Rooms[i])
         if (n != -1 && room_count != -1 && data.Bathroom[i] != -1 && data.Car[i] != -1) && val == room_count + data.Bathroom[i] + data.Car[i]
-            sum_rooms_prices[j] += val
+            sum_rooms_prices[j] += n
             count_vec[j] += 1
         end
     end
@@ -317,25 +423,39 @@ end
 
 
 groupcount(sum_rooms)
-scatter(unique(sum_rooms), (sum_rooms_prices ./ count_vec))
-regressions(unique(sum_rooms), (sum_rooms_prices ./ count_vec))
+scatter(unique(sum_rooms), (sum_rooms_prices ./ count_vec)./10^5,
+title = "Average price for the sum of rooms",
+xlabel = "Total number of rooms (Car, Bedroom, Bathroom)",
+ylabel = "Average price (x100,000)")
 #
 
 
 #land, build
-heat_land = collect(skipmissing(unique_vec[2]))
+data = select(df, [:Price, :BuildingArea, :Landsize])
+data = coalesce.(data, -1)
+disallowmissing!(data)
+
+heat_land = collect(data.Landsize)
 for (i, n) in enumerate(heat_land)
-    heat_land[i] = round((n + 50) / 100) * 100
+    if n == -1
+        continue
+    else
+        heat_land[i] = round((n + 50) / 100) * 100
+    end
 end
 
 
-heat_build = collect(skipmissing(unique_vec[6]))
+heat_build = collect(skipmissing(data.BuildingArea))
 for (i, n) in enumerate(heat_build)
-    heat_build[i] = round((n + 25) / 50) * 50
+    if n == -1
+        continue
+    else
+        heat_build[i] = round((n + 25) / 50) * 50
+    end
 end
 
-heat_land = unique(heat_land)
-heat_build = unique(heat_build)
+heat_land = sort(unique(heat_land))
+heat_build = sort(unique(heat_build))
 
 heat_price = zeros(length(heat_land), length(heat_build))
 prices_mat = zeros(length(heat_land), length(heat_build))
@@ -364,20 +484,25 @@ for (index, pric) in enumerate(data.Price)
     if pric != -1 && data.Landsize[index] != -1 && data.BuildingArea[index] != -1
         # not_neg += 1
         position = getposition(data.Landsize[index], data.BuildingArea[index])
-        prices_mat[position[1], position[2]] += pric
-        price_count_mat[position[1], position[2]] += 1
+        if data.Landsize[index] <= 0 ||  data.BuildingArea[index] <= 0
+            continue
+        else
+            prices_mat[position[1], position[2]] += pric
+            price_count_mat[position[1], position[2]] += 1
+        end
     end
     if mod(index, 1000) == 0
         println(".")
     end
 end
 
-prices_mat
-
 heat_price = (prices_mat ./ (price_count_mat .- 1)) ./ 10^5
-
-heatmap(heat_price)
 heat_price = Int64.(round.(heat_price))
+heatmap(heat_price,
+title = "Average price of properties by build area and landsize",
+xlabel = "Building area (m²)",
+ylabel = "Landsize (m²)",
+xticks = (2:2:5, heat_build[2:end]))
 #
 
 
@@ -435,8 +560,14 @@ prices_mat
 
 heat_price = (prices_mat ./ (price_count_mat .- 1)) ./ 10^5
 
-heatmap(heat_price)
-heatmap(heat_price[:, 1:4])
+heatmap(heat_price,
+title = "Average price of properties by landsize and distance from city",
+xlabel = "Distance from city (km)",
+ylabel = "Landsize (m²)")
+heatmap(heat_price[1:30, :],
+title = "Average price of properties by landsize and distance from city",
+xlabel = "Distance from city (km)",
+ylabel = "Landsize (m²)")
 #
 
 #build, distance
@@ -450,11 +581,11 @@ end
 heat_distance = unique(heat_distance)
 heat_build = unique(heat_build)
 
-heat_price = zeros(length(heat_distance), length(heat_build))
-prices_mat = zeros(length(heat_distance), length(heat_build))
-price_count_mat = 2 .* ones(length(heat_distance), length(heat_build))
+heat_price = zeros(length(heat_build), length(heat_distance))
+prices_mat = zeros(length(heat_build), length(heat_distance))
+price_count_mat = 2 .* ones(length(heat_build), length(heat_distance))
 
-function getposition(distance::Float64, build::Float64)
+function getposition(build::Float64, distance::Float64)
     d_index = 0
     build = round((build + 25) / 50) * 50
     b_index = 0
@@ -468,14 +599,14 @@ function getposition(distance::Float64, build::Float64)
             b_index = index
         end
     end
-    return [d_index, b_index]
+    return [b_index, d_index]
 end
 
 # not_neg = 0
 for (index, pric) in enumerate(data.Price)
     if pric != -1 && data.Distance[index] != -1 && data.BuildingArea[index] != -1
         # not_neg += 1
-        position = getposition(data.Distance[index], data.BuildingArea[index])
+        position = getposition(data.BuildingArea[index], data.Distance[index])
         prices_mat[position[1], position[2]] += pric
         price_count_mat[position[1], position[2]] += 1
     end
@@ -486,7 +617,15 @@ end
 
 heat_price = (prices_mat ./ (price_count_mat .- 1)) ./ 10^5
 
-heatmap(heat_price)
+heatmap(heat_price,
+title = "Average price of properties by Build area and distance from city",
+xlabel = "Distance from city (km)",
+ylabel = "Building area (m²)")
+
+heatmap(heat_price[1:15, :],
+title = "Average price of properties by Build area and distance from city",
+xlabel = "Distance from city (km)",
+ylabel = "Building area (m²)")
 #
 
 
@@ -507,21 +646,76 @@ volume_data = groupby(volume_data, :Date_function)
 
 #num of sales
 data = combine(volume_data, nrow => :count)
-bar(rownumber.(eachrow(data)), data.count)
+sort!(data)
+data = transform(data, :Date_function => ByRow(x -> "$(x[1])"*", "*"$(x[2])") => :Date)
+
+bar(data.Date, data.count, 
+xticks=(0.5:24.5, data.Date),
+xrotation = 45,
+bar_width = 0.6,
+widen = true,
+legend = false,
+title = "Number of properties sold per month",
+xlabel = "Date (year, month)",
+ylabel = "Count")
+# size=(1000, 500))
 #
 
 #price of sales
 # passmissing(select(df, [:Date, :Price]))
 data = combine(volume_data, :Price => mean ∘ skipmissing => :Price)
-bar(rownumber.(eachrow(data)), data.Price./10^5, ylims = [0,12])
+sort!(data)
+data = transform(data, :Date_function => ByRow(x -> "$(x[1])"*", "*"$(x[2])") => :Date)
+plot(data.Date, data.Price./10^5, ylims = [0,12],
+xticks=(0.5:24.5, data.Date),
+xrotation = 45,
+bar_width = 0.6,
+widen = true,
+legend = false,
+title = "Average price of properties sold per month",
+xlabel = "Date (year, month)",
+ylabel = "Average price (x100,000)")
 
 #type count
 volume_data = select(df, [:Date, :Type])
 transform!(volume_data, :Date => x -> yearmonth.(x))
+
 volume_data = groupby(volume_data, [:Date_function, :Type])
 
 # for each year, count groups plot the se for each year
 data = combine(volume_data, nrow => :count)
-groupedbar(rownumber.(eachrow(data)), data.count, group = data.Type, ylims = [0, 2300])
-# data = combine(volume_data, nrow => :count, :Type => x -> count(x) => :Type)
-# bar(rownumber.(eachrow(data)), data.Type)
+# sort!(data, :Date_function)
+data = transform(data, :Date_function => ByRow(x -> "$(x[1])"*", "*"$(x[2])") => :Date)
+
+sort!(data, [:Date_function, :Type])
+prop_data = groupby(data, :Date)
+
+proportions = []
+for i in 1:length(prop_data)
+    frame = prop_data[i]
+    append!(proportions, frame.count[1] / sum(frame.count))
+end
+
+
+
+p1 = plot(data.Date, data.count, group = data.Type, ylims = [0, 2300],
+xticks=(0.5:24.5, unique(data.Date)),
+xrotation = 45,
+bar_width = 0.6,
+widen = true,
+legend = false,
+title = "Number of Types of properties sold per month",
+xlabel = "Date (year, month)",
+ylabel = "Count")
+
+p2 = plot(unique(data.Date), proportions,
+xticks=(0.5:24.5, unique(data.Date)),
+xrotation = 45,
+bar_width = 0.6,
+widen = true,
+legend = false,
+title = "Proportion of houses sold per month",
+xlabel = "Date (year, month)",
+ylabel = "Proportion")
+
+plot(p1, p2, layout=grid(1,2), size = (1100,500))
