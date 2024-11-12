@@ -156,8 +156,6 @@ rename!(df, :newmeth => :Method)
 
 println("Missing values & data types changed")
 
-last(groupby(df, :Rooms))
-groupby(df, :Car)[14]
 #########################################################
 #########################################################
 ############# Task 1 ####################################
@@ -719,3 +717,133 @@ xlabel = "Date (year, month)",
 ylabel = "Proportion")
 
 plot(p1, p2, layout=grid(1,2), size = (1100,500))
+
+
+
+#########################################################
+#########################################################
+############# Task 4 ####################################
+#########################################################
+#########################################################
+# df_train = df[1:(Int64(round(length(df.Price)/2))),:]
+using Random, GLM
+
+n, _ = size(df)
+Random.seed!(0)
+p_validate = 0.3
+n_validate = floor(Int, p_validate*n)
+validate_index_set = sample(1:n, n_validate, replace = false)
+train_index_set = setdiff(1:n, validate_index_set);
+n_validate = length(validate_index_set)
+n_train = length(train_index_set)
+n_train, n_validate
+df_train = df[train_index_set,:]
+df_validate = df[validate_index_set,:];
+
+mse(y,ŷ) = sqrt(sum(skipmissing(y-ŷ).^2))
+
+model1 = glm(@formula(log(Price) ~ Distance), df_train, Normal(), IdentityLink())
+mse_1 = mse(predict(model1, df_validate), log.(df_validate.Price))
+# min_x = minimum(1 ./ (df_validate.Price))
+# max_x = maximum(1 ./ (df_validate.Price))
+# scatter(predict(model1, df_validate), (df_validate.Price), 
+# label = "model1", ms=3, msw=0, 
+# xlims = (minimum(skipmissing((df_validate.Price))), maximum(skipmissing((df_validate.Price)))), 
+# aspect_ratio = :equal)
+
+
+model2 = glm(@formula(log(Price) ~ Rooms), df_train, Normal(), IdentityLink())
+mse_2 = mse(predict(model2, df_validate), log.(df_validate.Price))
+# scatter(predict(model2, df_validate),df_validate.Price, ms=3, msw=0)
+
+
+# using CategoricalArrays
+# car_data = collect(df_train.Car)
+# ddf_train = DataFrame(Price = df_train.Price, Car = categorical(car_data))
+# ddf_validate = DataFrame(Price = df_validate.Price, Car = categorical(collect(df_validate.Car)))
+
+model3 = glm(@formula(log(Price) ~ Car), df_train, Normal(), IdentityLink()) #log one
+mse_3 = mse(predict(model3, df_validate), log.(df_validate.Price))
+# scatter(predict(model3, df_validate),df_validate.Price, ms=3, msw=0)
+
+model4 = glm(@formula(log(Price) ~ Bathroom), df_train, Normal(), IdentityLink()) #log one
+mse_4 = mse(predict(model4, df_validate), log.(df_validate.Price))
+# scatter(predict(model4, df_validate),df_validate.Price, ms=3, msw=0)
+
+model5 = glm(@formula(log(Price) ~ Landsize), df_train, Normal(), IdentityLink())
+mse_5 = mse(predict(model5, df_validate), log.(df_validate.Price))
+# scatter(predict(model5, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+model6 = glm(@formula(log(Price) ~ BuildingArea), df_train, Normal(), IdentityLink())
+mse_6 = mse(predict(model6, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+#dis, land
+model7 = glm(@formula(log(Price) ~ Distance + Landsize), df_train, Normal(), IdentityLink())
+mse_7 = mse(predict(model7, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+#dis, area
+model8 = glm(@formula(log(Price) ~ Distance + BuildingArea), df_train, Normal(), IdentityLink())
+mse_8 = mse(predict(model8, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+#land area
+model9 = glm(@formula(log(Price) ~ Landsize + BuildingArea), df_train, Normal(), IdentityLink())
+mse_9 = mse(predict(model9, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+#sum rooms
+model10 = glm(@formula(log(Price) ~ Car + Rooms + Bathroom), df_train, Normal(), IdentityLink())
+mse_10 = mse(predict(model10, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+
+#dis, area, land
+model11 = glm(@formula(log(Price) ~ Distance + Landsize + BuildingArea), df_train, Normal(), IdentityLink())
+mse_11 = mse(predict(model11, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+
+#best dis + sum or indi rooms
+model12 = glm(@formula(log(Price) ~ BuildingArea / (Car + Rooms + Bathroom)), df_train, Normal(), IdentityLink())
+mse_12 = mse(predict(model12, df_validate), log.(df_validate.Price))
+# scatter(predict(model6, df_validate),df_validate.Price, label = "model1", ms=3, msw=0)
+
+
+
+model13 = glm(@formula(log(Price) ~ (BuildingArea + Landsize)/ (Car + Rooms + Bathroom)), df_train, Normal(), IdentityLink())
+mse_13 = mse(predict(model13, df_validate), log.(df_validate.Price))
+
+model14 = glm(@formula(log(Price) ~ Distance  + (BuildingArea / (Car + Rooms + Bathroom))), df_train, Normal(), IdentityLink())
+mse_14 = mse(predict(model14, df_validate), log.(df_validate.Price))
+
+model15 = glm(@formula(log(Price) ~ BuildingArea + Car + Rooms + Bathroom), df_train, Normal(), IdentityLink())
+mse_15 = mse(predict(model15, df_validate), log.(df_validate.Price))
+
+model16 = glm(@formula(log(Price) ~ Distance  + (BuildingArea + Car + Rooms + Bathroom)), df_train, Normal(), IdentityLink())
+mse_16 = mse(predict(model16, df_validate), log.(df_validate.Price))
+
+model17 = glm(@formula(log(Price) ~ Landsize + Distance  + BuildingArea + Car + Rooms + Bathroom), df_train, Normal(), IdentityLink())
+mse_17 = mse(predict(model17, df_validate), log.(df_validate.Price))
+
+model18 = glm(@formula(log(Price) ~ Landsize + Distance + BuildingArea^2 + (sqrt(Car) + sqrt(Rooms) + sqrt(Bathroom))), df_train, Normal(), IdentityLink())
+mse_18 = mse(predict(model18, df_validate), log.(df_validate.Price))
+
+
+models = [model1, model2, model3, model4, model5, model6, model7, model8, model9, model10, model11, model12, model13, model14, model15, model16, model17, model18]
+mses = [mse_1, mse_2, mse_3, mse_4, mse_5, mse_6, mse_7, mse_8, mse_9, mse_10, mse_11, mse_12, mse_13, mse_14, mse_15, mse_16, mse_17, mse_18]
+p_vals = [coeftable(model).cols[4] for model in models]
+model_nums = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18"]
+accuracy = DataFrame(Model = model_nums, P = p_vals, MSE = mses)
+
+sort!(accuracy, :MSE)
+
+@show accuracy
+
+transform!(accuracy, :MSE => ByRow(x -> sqrt(x)) => :RMSE)
+transform!(accuracy, :RMSE => ByRow(x -> x/(maximum(skipmissing(log.(df_validate.Price))) - minimum(skipmissing(log.(df_validate.Price))))) => :Norm_RMSE)
+transform!(accuracy, :MSE => ByRow(x -> x/(maximum(skipmissing(log.(df_validate.Price))) - minimum(skipmissing(log.(df_validate.Price))))) => :Norm_MSE)
+
+scatter(predict(model18, df_validate), log.(df_validate.Price), xlims = [10,20], ylims = [10,20], aspect_ratio = :equal)
+plot!([10,20], [10,20])
