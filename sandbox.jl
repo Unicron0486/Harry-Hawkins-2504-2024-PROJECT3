@@ -815,13 +815,13 @@ mse_12 = mse(predict(model12, df_validate), log.(df_validate.Price))
 model13 = glm(@formula(log(Price) ~ (BuildingArea + Landsize)/ (Car + Rooms + Bathroom)), df_train, Normal(), IdentityLink())
 mse_13 = mse(predict(model13, df_validate), log.(df_validate.Price))
 
-model14 = glm(@formula(log(Price) ~ Distance  + (BuildingArea / (Car + Rooms + Bathroom))), df_train, Normal(), IdentityLink())
+model14 = glm(@formula(log(Price) ~ (Distance  + BuildingArea) / (Car + Rooms + Bathroom)), df_train, Normal(), IdentityLink())
 mse_14 = mse(predict(model14, df_validate), log.(df_validate.Price))
 
 model15 = glm(@formula(log(Price) ~ BuildingArea + Car + Rooms + Bathroom), df_train, Normal(), IdentityLink())
 mse_15 = mse(predict(model15, df_validate), log.(df_validate.Price))
 
-model16 = glm(@formula(log(Price) ~ Distance  + (BuildingArea + Car + Rooms + Bathroom)), df_train, Normal(), IdentityLink())
+model16 = glm(@formula(log(Price) ~ BuildingArea + Rooms + Bathroom), df_train, Normal(), IdentityLink())
 mse_16 = mse(predict(model16, df_validate), log.(df_validate.Price))
 
 model17 = glm(@formula(log(Price) ~ Landsize + Distance  + BuildingArea + Car + Rooms + Bathroom), df_train, Normal(), IdentityLink())
